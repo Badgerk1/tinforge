@@ -49,8 +49,12 @@ def _build_report(extracted: List[Dict[str, object]], tin_stats: Dict[str, objec
             f"- {item['file_path'].name}",
             f"  path: {item['file_path']}",
             f"  size: {format_bytes(item['file_size'])}",
+            f"  extraction source: {item['parse_details'].get('source', 'unknown')}",
             f"  extracted points: {summary['point_count']}",
         ])
+        companion_tp3_path = item["parse_details"].get("companion_tp3_path")
+        if companion_tp3_path:
+            lines.append(f"  companion tp3: {companion_tp3_path}")
         if bounds:
             lines.append(
                 "  bounds: "
