@@ -99,10 +99,7 @@ class PDFParser(PointParser):
                     for page_idx, page in enumerate(pdf.pages):
                         points.extend(self._extract_from_ocr(page, page_idx))
                     points = self._normalize_points(points)
-                    if companion_tp3_path and self._should_use_companion_tp3_fallback(points, pdf_metrics):
-                        points = self._extract_from_companion_tp3(companion_tp3_path)
-                        self.last_parse_details["source"] = "companion_tp3"
-                    elif points:
+                    if points:
                         self.last_parse_details["source"] = "ocr"
                 else:
                     points = []
