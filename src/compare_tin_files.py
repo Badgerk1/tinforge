@@ -80,6 +80,8 @@ class ComparisonResult:
     manual: ParsedTIN
     generated: ParsedTIN
     coordinate_tolerance: float
+    bounds_tolerance_percent: float
+    area_tolerance_percent: float
     point_count_match: bool
     coordinate_match_percent: float
     coordinate_matches_within_tolerance: int
@@ -136,8 +138,10 @@ def compare_tin_files(
         matched_points=matched_points,
         shared_point_count=shared_point_count,
         bounds_difference_percent=bounds_difference_percent,
+        bounds_tolerance_percent=bounds_tolerance_percent,
         triangle_match_percent=triangle_match_percent,
         area_difference_percent=area_difference_percent,
+        area_tolerance_percent=area_tolerance_percent,
     )
 
     equivalent = (
@@ -145,6 +149,7 @@ def compare_tin_files(
         and len(manual.points) == len(generated.points)
         and len(manual.triangles) == len(generated.triangles)
         and coordinate_match_percent >= 100.0
+        and triangle_match_percent >= 100.0
         and bounds_difference_percent <= bounds_tolerance_percent
         and area_difference_percent <= area_tolerance_percent
     )
@@ -154,6 +159,8 @@ def compare_tin_files(
         generated=generated,
         coordinate_tolerance=coordinate_tolerance,
         point_count_match=len(manual.points) == len(generated.points),
+        bounds_tolerance_percent=bounds_tolerance_percent,
+        area_tolerance_percent=area_tolerance_percent,
         coordinate_match_percent=coordinate_match_percent,
         coordinate_matches_within_tolerance=matched_points,
         bounds_difference_percent=bounds_difference_percent,
@@ -197,7 +204,9 @@ def render_comparison_report(result: ComparisonResult) -> str:
         "ACCURACY METRICS:",
         f"  Coordinate Match: {result.coordinate_match_percent:.2f}%",
         "  Tolerance Levels: "
-        f"coordinate={result.coordinate_tolerance:.4f}, bounds=1.00%, area=1.00%",
+        f"coordinate={result.coordinate_tolerance:.4f}, "
+        f"bounds={result.bounds_tolerance_percent:.2f}%, "
+        f"area={result.area_tolerance_percent:.2f}%",
         "",
         "DIFFERENCES FOUND:",
     ]
@@ -511,17 +520,20 @@ def _match_points(
 
     if cKDTree is not None:
         target_tree = cKDTree([(point.x, point.y, point.z) for point in points_b])
-        distances, _ = target_tree.query([(point.x, point.y, point.z) for point in points_a], k=1)
-        matched = sum(1 for distance in distances if distance <= tolerance)
+        adjacency = [
+            target_tree.query_ball_point((point.x, point.y, point.z), r=tolerance)
+            for point in points_a
+        ]
     else:
-        matched = 0
+        adjacency = []
         for point in points_a:
-            best_distance = min(
-                _distance_3d(point, candidate)
-                for candidate in points_b
-            )
-            if best_distance <= tolerance:
-                matched += 1
+            candidates = []
+            for index, candidate in enumerate(points_b):
+                if _distance_3d(point, candidate) <= tolerance:
+                    candidates.append(index)
+            adjacency.append(candidates)
+
+    matched = _maximum_bipartite_matches(adjacency)
 
     denominator = max(len(points_a), len(points_b))
     percent = (matched / denominator) * 100.0 if denominator else 0.0
@@ -581,8 +593,10 @@ def _build_differences(
     matched_points: int,
     shared_point_count: int,
     bounds_difference_percent: float,
+    bounds_tolerance_percent: float,
     triangle_match_percent: float,
     area_difference_percent: float,
+    area_tolerance_percent: float,
 ) -> List[str]:
     """Build a list of comparison differences."""
     differences = []
@@ -592,13 +606,13 @@ def _build_differences(
         differences.append(
             f"Only {matched_points} of {shared_point_count} comparable points matched within tolerance {coordinate_tolerance:.4f}."
         )
-    if bounds_difference_percent > 1.0:
+    if bounds_difference_percent > bounds_tolerance_percent:
         differences.append(f"Bounds differ by {bounds_difference_percent:.2f}%.")
     if len(manual.triangles) != len(generated.triangles):
         differences.append(f"Triangle count differs ({len(manual.triangles)} vs {len(generated.triangles)}).")
     if triangle_match_percent < 100.0:
         differences.append(f"Triangle definitions match at {triangle_match_percent:.2f}%.")
-    if area_difference_percent > 1.0:
+    if area_difference_percent > area_tolerance_percent:
         differences.append(f"Area differs by {area_difference_percent:.2f}%.")
     if not manual.point_id_sequence_ok or not generated.point_id_sequence_ok:
         differences.append("Point ID sequences are not fully sequential.")
@@ -619,3 +633,24 @@ def _format_bounds(bounds: Optional[Dict[str, float]]) -> str:
 def _checkmark(value: bool) -> str:
     """Return a check or cross symbol."""
     return "✓" if value else "✗"
+
+
+def _maximum_bipartite_matches(adjacency: Sequence[Sequence[int]]) -> int:
+    """Return the maximum number of one-to-one matches in a bipartite graph."""
+    target_to_source: Dict[int, int] = {}
+
+    def assign(source_index: int, visited: set) -> bool:
+        for target_index in adjacency[source_index]:
+            if target_index in visited:
+                continue
+            visited.add(target_index)
+            if target_index not in target_to_source or assign(target_to_source[target_index], visited):
+                target_to_source[target_index] = source_index
+                return True
+        return False
+
+    matches = 0
+    for source_index in range(len(adjacency)):
+        if assign(source_index, set()):
+            matches += 1
+    return matches
