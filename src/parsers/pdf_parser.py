@@ -161,6 +161,8 @@ class PDFParser(PointParser):
             source_parts.append("text")
         if found_annotation_points:
             source_parts.append("annotations")
+        if not source_parts and found_ocr_points:
+            return "ocr"
         if found_ocr_points:
             source_parts.append("ocr")
         return "pdf_" + "+".join(source_parts)
@@ -239,7 +241,7 @@ class PDFParser(PointParser):
                 continue
 
             normalized_content = content.lower()
-            numeric_matches = re.findall(r'([+-]?\d+(?:\.\d+)?)', content.replace(",", ""))
+            numeric_matches = re.findall(r'(?<![\d,])([+-]?\d+(?:\.\d+)?)(?![\d,])', content)
             if len(numeric_matches) != 1:
                 continue
             if (

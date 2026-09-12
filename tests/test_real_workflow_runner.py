@@ -26,8 +26,10 @@ def test_run_real_workflow_creates_expected_outputs(tmp_path):
     assert len(results["combined_points"]) >= 3
     assert plan_summary["summary"]["point_count"] >= 1
     assert topo_summary["summary"]["point_count"] >= 1
-    assert plan_summary["parse_details"]["source"].startswith("pdf_")
-    assert topo_summary["parse_details"]["source"].startswith("pdf_")
+    assert plan_summary["parse_details"]["source"] != "ocr_unavailable"
+    assert topo_summary["parse_details"]["source"] != "ocr_unavailable"
+    assert plan_summary["parse_details"]["source"] in {"ocr", "pdf_ocr", "pdf_text+ocr", "pdf_table+ocr", "pdf_annotations+ocr"}
+    assert topo_summary["parse_details"]["source"] in {"ocr", "pdf_ocr", "pdf_text+ocr", "pdf_table+ocr", "pdf_annotations+ocr"}
     assert results["tin_statistics"]["triangle_count"] >= 1
     assert results["report_path"].exists()
     assert "extraction source:" in results["report_text"]

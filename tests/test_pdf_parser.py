@@ -259,7 +259,7 @@ def test_parse_uses_ocr_when_pdf_extraction_finds_no_points(monkeypatch, tmp_pat
     points = parser.parse(str(pdf_path))
 
     assert len(points) == 2
-    assert parser.last_parse_details["source"] == "pdf_ocr"
+    assert parser.last_parse_details["source"] == "ocr"
 
 
 def test_extract_from_annotations_ignores_non_spot_values():
