@@ -52,12 +52,14 @@ class PDFParser(PointParser):
         
         try:
             with self.pdfplumber.open(filepath) as pdf:
-                pdf_metrics = self._collect_pdf_metrics(pdf.pages)
-                companion_tp3_path = self._find_companion_tp3(pdf_path, pdf.pages)
+                pdf_metrics, page_texts = self._collect_pdf_metrics(pdf.pages)
+                companion_tp3_path = self._find_companion_tp3(pdf_path, pdf.pages, page_texts)
                 self.last_parse_details.update(pdf_metrics)
                 self.last_parse_details["companion_tp3_path"] = (
                     str(companion_tp3_path) if companion_tp3_path else None
                 )
+                found_table_points = False
+                found_text_points = False
 
                 for page_idx, page in enumerate(pdf.pages):
                     page_points = []
@@ -66,12 +68,18 @@ class PDFParser(PointParser):
                     tables = page.extract_tables()
                     if tables:
                         for table in tables:
-                            page_points.extend(self._extract_from_table(table, page_idx))
+                            table_points = self._extract_from_table(table, page_idx)
+                            if table_points:
+                                found_table_points = True
+                                page_points.extend(table_points)
 
                     # Also try to extract text and find coordinates
-                    text = page.extract_text()
+                    text = page_texts[page_idx]
                     if text:
-                        page_points.extend(self._extract_from_text(text, page_idx))
+                        text_points = self._extract_from_text(text, page_idx)
+                        if text_points:
+                            found_text_points = True
+                            page_points.extend(text_points)
 
                     points.extend(page_points)
 
@@ -80,7 +88,10 @@ class PDFParser(PointParser):
                     points = self._extract_from_companion_tp3(companion_tp3_path)
                     self.last_parse_details["source"] = "companion_tp3"
                 elif points:
-                    self.last_parse_details["source"] = "pdf_text"
+                    self.last_parse_details["source"] = self._resolve_pdf_text_source(
+                        found_table_points,
+                        found_text_points,
+                    )
                 elif self._should_skip_ocr(pdf_metrics, companion_tp3_path):
                     points = []
                     self.last_parse_details["source"] = "empty_reference_sheet"
@@ -110,8 +121,8 @@ class PDFParser(PointParser):
         self.last_parse_details["point_count"] = len(points)
         return points
 
-    def _collect_pdf_metrics(self, pages: List[object]) -> Dict[str, int]:
-        """Capture lightweight PDF structure metrics used to choose extraction paths."""
+    def _collect_pdf_metrics(self, pages: List[object]) -> tuple[Dict[str, int], List[str]]:
+        """Capture PDF metrics and cache per-page text used during extraction."""
         metrics = {
             "page_count": len(pages),
             "image_count": 0,
@@ -119,6 +130,7 @@ class PDFParser(PointParser):
             "annotation_count": 0,
             "text_page_count": 0,
         }
+        page_texts: List[str] = []
 
         for page in pages:
             metrics["image_count"] += len(getattr(page, "images", []))
@@ -128,12 +140,19 @@ class PDFParser(PointParser):
                 + len(getattr(page, "rects", []))
             )
             metrics["annotation_count"] += len(getattr(page, "annots", []) or [])
-            if (page.extract_text() or "").strip():
+            page_text = (page.extract_text() or "").strip()
+            page_texts.append(page_text)
+            if page_text:
                 metrics["text_page_count"] += 1
 
-        return metrics
+        return metrics, page_texts
 
-    def _find_companion_tp3(self, pdf_path: Path, pages: List[object]) -> Optional[Path]:
+    def _find_companion_tp3(
+        self,
+        pdf_path: Path,
+        pages: List[object],
+        page_texts: Optional[List[str]] = None,
+    ) -> Optional[Path]:
         """Locate the most plausible TP3 companion that ships alongside the PDF survey bundle."""
         candidates = sorted(
             path for path in pdf_path.parent.iterdir()
@@ -145,8 +164,9 @@ class PDFParser(PointParser):
             return candidates[0]
 
         context_tokens = set(self._tokenize_name(pdf_path.stem))
-        for page in pages:
-            context_tokens.update(self._tokenize_name(page.extract_text() or ""))
+        for page_idx, page in enumerate(pages):
+            if page_texts is not None and page_idx < len(page_texts):
+                context_tokens.update(self._tokenize_name(page_texts[page_idx]))
             for annot in getattr(page, "annots", []) or []:
                 context_tokens.update(self._tokenize_name(annot.get("contents") or ""))
 
@@ -168,6 +188,14 @@ class PDFParser(PointParser):
             for token in re.findall(r"[A-Za-z0-9]+", value.lower())
             if len(token) >= 3
         ]
+
+    def _resolve_pdf_text_source(self, found_table_points: bool, found_text_points: bool) -> str:
+        """Describe which native PDF extraction paths produced survey points."""
+        if found_table_points and found_text_points:
+            return "pdf_table+text"
+        if found_table_points:
+            return "pdf_table"
+        return "pdf_text"
 
     def _should_use_companion_tp3_fallback(
         self,
