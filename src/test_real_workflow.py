@@ -90,9 +90,9 @@ def _build_report(extracted: List[Dict[str, object]], tin_stats: Dict[str, objec
     return "\n".join(lines) + "\n"
 
 
-def run_real_workflow(output_dir: Path | None = None) -> Dict[str, object]:
+def run_real_workflow(output_dir: Path | None = None, input_paths: List[Path] | None = None) -> Dict[str, object]:
     """Execute the end-to-end real survey workflow."""
-    extracted = extract_real_survey_data()
+    extracted = extract_real_survey_data(input_paths)
     combined_points = []
 
     for item in extracted:
