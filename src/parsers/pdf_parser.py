@@ -304,7 +304,7 @@ class PDFParser(PointParser):
                 parenthesized = prefix.endswith("(") or suffix.startswith(")") or suffix.endswith(")")
                 token_lower = token.lower()
                 survey_annotated = any(
-                    pattern.search(token_lower) or pattern.search(normalized_line)
+                    pattern.search(token_lower)
                     for pattern in SURVEY_ANNOTATION_PATTERNS
                 )
                 if confidence < 40 and not (parenthesized or keyword_context or survey_annotated):
