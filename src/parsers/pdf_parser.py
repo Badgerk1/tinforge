@@ -174,6 +174,8 @@ class PDFParser(PointParser):
             scored_candidates.append((score, candidate))
 
         scored_candidates.sort(key=lambda item: (item[0], item[1].name.lower()), reverse=True)
+        if scored_candidates[0][0] <= 0:
+            return None
         if len(scored_candidates) == 1 or scored_candidates[0][0] > scored_candidates[1][0]:
             return scored_candidates[0][1]
         return None
