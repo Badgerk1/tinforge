@@ -10,6 +10,17 @@ from typing import List, Optional
 from ..core.tin_model import Point3D
 from .point_parser import PointParser
 
+SURVEY_ANNOTATION_PATTERNS = (
+    re.compile(r"\belev\b"),
+    re.compile(r"\bgrade\b"),
+    re.compile(r"\bspot\b"),
+    re.compile(r"\bbm\b"),
+    re.compile(r"\blp\s*="),
+    re.compile(r"\bt/?g\s*="),
+    re.compile(r"\bex\b"),
+    re.compile(r"\)\s*ex\b"),
+)
+
 
 class PDFParser(PointParser):
     """Extract survey points from PDF documents."""
@@ -294,16 +305,7 @@ class PDFParser(PointParser):
                 token_lower = token.lower()
                 survey_annotated = any(
                     pattern.search(token_lower) or pattern.search(normalized_line)
-                    for pattern in (
-                        re.compile(r"\belev\b"),
-                        re.compile(r"\bgrade\b"),
-                        re.compile(r"\bspot\b"),
-                        re.compile(r"\bbm\b"),
-                        re.compile(r"\blp\s*="),
-                        re.compile(r"\bt/?g\s*="),
-                        re.compile(r"\bex\b"),
-                        re.compile(r"\)\s*ex\b"),
-                    )
+                    for pattern in SURVEY_ANNOTATION_PATTERNS
                 )
                 if confidence < 40 and not (parenthesized or keyword_context or survey_annotated):
                     continue
