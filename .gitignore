@@ -60,4 +60,5 @@ coverage.xml
 *.pdf
 input_files/
 output_files/
+tests/output/
 .env
