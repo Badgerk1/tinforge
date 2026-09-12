@@ -143,15 +143,21 @@ def compare_tin_files(
         area_difference_percent=area_difference_percent,
         area_tolerance_percent=area_tolerance_percent,
     )
+    triangles_exact = _triangles_are_exact(manual) and _triangles_are_exact(generated)
 
     equivalent = (
         not differences
         and len(manual.points) == len(generated.points)
-        and len(manual.triangles) == len(generated.triangles)
         and coordinate_match_percent >= 100.0
-        and triangle_match_percent >= 100.0
         and bounds_difference_percent <= bounds_tolerance_percent
         and area_difference_percent <= area_tolerance_percent
+        and (
+            not triangles_exact
+            or (
+                len(manual.triangles) == len(generated.triangles)
+                and triangle_match_percent >= 100.0
+            )
+        )
     )
 
     return ComparisonResult(
@@ -515,6 +521,8 @@ def _match_points(
     tolerance: float,
 ) -> Tuple[int, float]:
     """Match points between two collections using nearest-neighbor distance."""
+    if not points_a and not points_b:
+        return 0, 100.0
     if not points_a or not points_b:
         return 0, 0.0
 
@@ -554,6 +562,8 @@ def _calculate_bounds_difference_percent(
     bounds_b: Optional[Dict[str, float]],
 ) -> float:
     """Calculate aggregate percentage difference between file bounds."""
+    if bounds_a is None and bounds_b is None:
+        return 0.0
     if not bounds_a or not bounds_b:
         return 100.0
 
@@ -600,6 +610,7 @@ def _build_differences(
 ) -> List[str]:
     """Build a list of comparison differences."""
     differences = []
+    triangles_exact = _triangles_are_exact(manual) and _triangles_are_exact(generated)
     if len(manual.points) != len(generated.points):
         differences.append(f"Point count differs ({len(manual.points)} vs {len(generated.points)}).")
     if matched_points < shared_point_count:
@@ -608,9 +619,9 @@ def _build_differences(
         )
     if bounds_difference_percent > bounds_tolerance_percent:
         differences.append(f"Bounds differ by {bounds_difference_percent:.2f}%.")
-    if len(manual.triangles) != len(generated.triangles):
+    if triangles_exact and len(manual.triangles) != len(generated.triangles):
         differences.append(f"Triangle count differs ({len(manual.triangles)} vs {len(generated.triangles)}).")
-    if triangle_match_percent < 100.0:
+    if triangles_exact and triangle_match_percent < 100.0:
         differences.append(f"Triangle definitions match at {triangle_match_percent:.2f}%.")
     if area_difference_percent > area_tolerance_percent:
         differences.append(f"Area differs by {area_difference_percent:.2f}%.")
@@ -633,6 +644,11 @@ def _format_bounds(bounds: Optional[Dict[str, float]]) -> str:
 def _checkmark(value: bool) -> str:
     """Return a check or cross symbol."""
     return "✓" if value else "✗"
+
+
+def _triangles_are_exact(parsed_tin: ParsedTIN) -> bool:
+    """Return whether triangle connectivity came directly from the file."""
+    return parsed_tin.metadata.get("triangle_source", "parsed") == "parsed"
 
 
 def _maximum_bipartite_matches(adjacency: Sequence[Sequence[int]]) -> int:
