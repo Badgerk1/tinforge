@@ -1,6 +1,7 @@
 """Run the full TinForge workflow against the uploaded real survey PDFs."""
 
 from pathlib import Path
+import re
 import sys
 from typing import Dict, List
 
@@ -24,6 +25,13 @@ def _calculate_overall_success(validation: Dict[str, object]) -> bool:
         for key, value in validation.items()
         if key != "overall_success"
     )
+
+
+def _replace_validation_line(report_text: str, label: str, passed: bool) -> str:
+    """Replace a validation line in the rendered report."""
+    status = "PASS" if passed else "FAIL"
+    pattern = rf"^- {re.escape(label)}: (PASS|FAIL)$"
+    return re.sub(pattern, f"- {label}: {status}", report_text, flags=re.MULTILINE)
 
 
 def _renumber_points(points: List[Point3D]) -> List[Point3D]:
@@ -181,11 +189,16 @@ def run_real_workflow(output_dir: Path | None = None, input_paths: List[Path] | 
         "all_exports_successful": len(output_files) == 6 and all(
             path.exists() and path.stat().st_size > 0 for path in output_files.values()
         ),
-        "report_created": True,
+        "report_created": False,
         "output_naming_ok": all(path.parent == destination and path.name.startswith("final_survey_") for path in output_files.values()),
     }
     validation["overall_success"] = _calculate_overall_success(validation)
     report_text = _build_report(extracted, tin_stats, output_files, validation, destination)
+    report_path.write_text(report_text, encoding="utf-8")
+    validation["report_created"] = report_path.exists() and report_path.stat().st_size > 0
+    validation["overall_success"] = _calculate_overall_success(validation)
+    report_text = _replace_validation_line(report_text, "readable report created", validation["report_created"])
+    report_text = _replace_validation_line(report_text, "overall result", validation["overall_success"])
     report_path.write_text(report_text, encoding="utf-8")
 
     return {

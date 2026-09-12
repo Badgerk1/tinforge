@@ -145,6 +145,7 @@ def test_extract_elevation_points_from_ocr_rows_filters_noise():
     assert [round(point.z, 2) for point in points] == [170.25, 170.40, 170.69, 168.32, 168.44]
     assert [round(point.x, 1) for point in points] == [86.4, 165.6, 266.4, 597.6, 705.6]
     assert [round(point.y, 1) for point in points] == [924.4, 910.0, 895.6, 838.0, 809.2]
+    assert all(round(point.z, 2) != 170.55 for point in points)
 
 
 def test_summarize_points_handles_empty_collections():
