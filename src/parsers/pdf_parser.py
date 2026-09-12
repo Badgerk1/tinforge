@@ -291,9 +291,19 @@ class PDFParser(PointParser):
                 prefix = token[:match.start()].strip()
                 suffix = token[match.end():].strip()
                 parenthesized = prefix.endswith("(") or suffix.startswith(")") or suffix.endswith(")")
+                token_lower = token.lower()
                 survey_annotated = any(
-                    marker in token.lower() or marker in normalized_line
-                    for marker in ("elev", "grade", "spot", "bm", "lp=", "t/g", "tg=", "ex")
+                    pattern.search(token_lower) or pattern.search(normalized_line)
+                    for pattern in (
+                        re.compile(r"\belev\b"),
+                        re.compile(r"\bgrade\b"),
+                        re.compile(r"\bspot\b"),
+                        re.compile(r"\bbm\b"),
+                        re.compile(r"\blp\s*="),
+                        re.compile(r"\bt/?g\s*="),
+                        re.compile(r"\bex\b"),
+                        re.compile(r"\)\s*ex\b"),
+                    )
                 )
                 if confidence < 40 and not (parenthesized or keyword_context or survey_annotated):
                     continue

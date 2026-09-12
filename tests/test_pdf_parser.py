@@ -116,6 +116,17 @@ def test_extract_elevation_points_from_ocr_rows_filters_noise():
             "width": "60",
             "height": "10",
         },
+        {
+            "block_num": "8",
+            "par_num": "1",
+            "line_num": "1",
+            "text": "TEXT170.55",
+            "conf": "15",
+            "left": "900",
+            "top": "240",
+            "width": "70",
+            "height": "10",
+        },
     ]
 
     points = parser._extract_elevation_points_from_ocr_rows(rows, page_height=1000.0, resolution=100)
