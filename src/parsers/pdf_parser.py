@@ -291,7 +291,11 @@ class PDFParser(PointParser):
                 prefix = token[:match.start()].strip()
                 suffix = token[match.end():].strip()
                 parenthesized = prefix.endswith("(") or suffix.startswith(")") or suffix.endswith(")")
-                if confidence < 40:
+                survey_annotated = any(
+                    marker in token.lower() or marker in normalized_line
+                    for marker in ("elev", "grade", "spot", "bm", "lp=", "t/g", "tg=", "ex")
+                )
+                if confidence < 40 and not (parenthesized or keyword_context or survey_annotated):
                     continue
                 if self.ocr_value_range is not None:
                     min_value, max_value = self.ocr_value_range

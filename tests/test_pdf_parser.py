@@ -105,13 +105,24 @@ def test_extract_elevation_points_from_ocr_rows_filters_noise():
             "width": "40",
             "height": "10",
         },
+        {
+            "block_num": "7",
+            "par_num": "1",
+            "line_num": "1",
+            "text": "LP=168.32",
+            "conf": "15",
+            "left": "800",
+            "top": "220",
+            "width": "60",
+            "height": "10",
+        },
     ]
 
     points = parser._extract_elevation_points_from_ocr_rows(rows, page_height=1000.0, resolution=100)
 
-    assert [round(point.z, 2) for point in points] == [170.25, 170.40, 170.69]
-    assert [round(point.x, 1) for point in points] == [86.4, 165.6, 266.4]
-    assert [round(point.y, 1) for point in points] == [924.4, 910.0, 895.6]
+    assert [round(point.z, 2) for point in points] == [170.25, 170.40, 170.69, 168.32]
+    assert [round(point.x, 1) for point in points] == [86.4, 165.6, 266.4, 597.6]
+    assert [round(point.y, 1) for point in points] == [924.4, 910.0, 895.6, 838.0]
 
 
 def test_summarize_points_handles_empty_collections():

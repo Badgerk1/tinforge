@@ -17,6 +17,15 @@ from src.process_real_data import extract_real_survey_data, format_bytes
 OUTPUT_DIR = REPOSITORY_ROOT / "tests" / "output"
 
 
+def _calculate_overall_success(validation: Dict[str, object]) -> bool:
+    """Return True when every validation check except the rollup passed."""
+    return all(
+        value
+        for key, value in validation.items()
+        if key != "overall_success"
+    )
+
+
 def _renumber_points(points: List[Point3D]) -> List[Point3D]:
     """Assign sequential IDs across all extracted files."""
     return [
@@ -173,11 +182,11 @@ def run_real_workflow(output_dir: Path | None = None, input_paths: List[Path] | 
         "report_created": False,
         "output_naming_ok": all(path.parent == destination and path.name.startswith("final_survey_") for path in output_files.values()),
     }
-    validation["overall_success"] = all(validation.values())
+    validation["overall_success"] = _calculate_overall_success(validation)
     report_text = _build_report(extracted, tin_stats, output_files, validation, destination)
     report_path.write_text(report_text, encoding="utf-8")
     validation["report_created"] = report_path.exists() and report_path.stat().st_size > 0
-    validation["overall_success"] = all(validation.values())
+    validation["overall_success"] = _calculate_overall_success(validation)
     report_text = _build_report(extracted, tin_stats, output_files, validation, destination)
     report_path.write_text(report_text, encoding="utf-8")
 
