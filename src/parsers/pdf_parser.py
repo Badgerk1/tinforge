@@ -84,7 +84,14 @@ class PDFParser(PointParser):
                     points.extend(page_points)
 
                 points = self._normalize_points(points)
-                should_attempt_ocr = len(points) < 100 and shutil.which("tesseract")
+                should_attempt_ocr = (
+                    len(points) == 0
+                    or (
+                        len(points) < 10
+                        and pdf_metrics["text_page_count"] == 0
+                        and (pdf_metrics["image_count"] > 0 or pdf_metrics["vector_object_count"] > 1000)
+                    )
+                ) and shutil.which("tesseract")
                 if should_attempt_ocr:
                     for page_idx, page in enumerate(pdf.pages):
                         ocr_points.extend(self._extract_from_ocr(page, page_idx))

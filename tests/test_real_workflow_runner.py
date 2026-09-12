@@ -20,11 +20,14 @@ def test_run_real_workflow_creates_expected_outputs(tmp_path):
     results = run_real_workflow(output_dir=tmp_path)
 
     input_summaries = {item["file_path"].name: item for item in results["inputs"]}
+    topo_summary = input_summaries["63287_002-TB1-ElevationsOn-24x30-Horiz-Topo.pdf"]
+    plan_summary = input_summaries["63287_001-C1.1 -R1.pdf"]
 
     assert len(results["combined_points"]) >= 3
-    assert input_summaries["63287_001-C1.1 -R1.pdf"]["summary"]["point_count"] >= 0
-    assert input_summaries["63287_002-TB1-ElevationsOn-24x30-Horiz-Topo.pdf"]["summary"]["point_count"] >= 1
-    assert input_summaries["63287_002-TB1-ElevationsOn-24x30-Horiz-Topo.pdf"]["parse_details"]["source"] != "companion_tp3"
+    assert plan_summary["summary"]["point_count"] >= 1
+    assert topo_summary["summary"]["point_count"] >= 1
+    assert plan_summary["parse_details"]["source"].startswith("pdf_")
+    assert topo_summary["parse_details"]["source"].startswith("pdf_")
     assert results["tin_statistics"]["triangle_count"] >= 1
     assert results["report_path"].exists()
     assert "extraction source:" in results["report_text"]
