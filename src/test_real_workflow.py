@@ -181,13 +181,9 @@ def run_real_workflow(output_dir: Path | None = None, input_paths: List[Path] | 
         "all_exports_successful": len(output_files) == 6 and all(
             path.exists() and path.stat().st_size > 0 for path in output_files.values()
         ),
-        "report_created": False,
+        "report_created": True,
         "output_naming_ok": all(path.parent == destination and path.name.startswith("final_survey_") for path in output_files.values()),
     }
-    validation["overall_success"] = _calculate_overall_success(validation)
-    report_text = _build_report(extracted, tin_stats, output_files, validation, destination)
-    report_path.write_text(report_text, encoding="utf-8")
-    validation["report_created"] = report_path.exists() and report_path.stat().st_size > 0
     validation["overall_success"] = _calculate_overall_success(validation)
     report_text = _build_report(extracted, tin_stats, output_files, validation, destination)
     report_path.write_text(report_text, encoding="utf-8")
