@@ -47,17 +47,23 @@ def test_parse_binary_tp3_probe_extracts_project_name_and_points(tmp_path):
         + "Synthetic Surface".encode("utf-16le")
         + b"\x00" * 24
     )
-    records = []
-    for index in range(8):
-        records.append(struct.pack("<ddd", float(index), float(index * 2), 150.0 + index))
+    points = [
+        (100.0, 100.0, 150.0),
+        (120.0, 100.0, 150.5),
+        (105.0, 115.0, 151.0),
+        (118.0, 130.0, 152.0),
+    ]
+    records = [struct.pack("<ddd", *point) for point in points]
     tp3_path.write_bytes(header + b"".join(records))
 
     parsed = parse_tin_file(tp3_path)
 
     assert parsed.source_format == "topcon_binary_tp3"
     assert parsed.name == "Synthetic Surface"
-    assert len(parsed.points) >= 8
-    assert len(parsed.triangles) >= 1
+    assert len(parsed.points) == 4
+    assert parsed.metadata["triangle_source"] == "inferred_delaunay"
+    assert len(parsed.triangles) == 2
+    assert {triangle_point for triangle in parsed.triangles for triangle_point in triangle} == {1, 2, 3, 4}
 
 
 def test_compare_tin_files_respects_non_default_tolerances(tmp_path):

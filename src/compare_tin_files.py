@@ -148,7 +148,7 @@ def compare_tin_files(
     equivalent = (
         not differences
         and len(manual.points) == len(generated.points)
-        and coordinate_match_percent >= 100.0
+        and matched_points == max(len(manual.points), len(generated.points))
         and bounds_difference_percent <= bounds_tolerance_percent
         and area_difference_percent <= area_tolerance_percent
         and (
@@ -199,7 +199,7 @@ def render_comparison_report(result: ComparisonResult) -> str:
         f"  TinForge Bounds: {generated_bounds}",
         f"  Difference: {result.bounds_difference_percent:.2f}%",
         f"  Within Tolerance ({result.coordinate_tolerance:.4f}): "
-        f"{result.coordinate_matches_within_tolerance}/{min(len(result.manual.points), len(result.generated.points))}",
+        f"{result.coordinate_matches_within_tolerance}/{max(len(result.manual.points), len(result.generated.points))}",
         "",
         "TRIANGLES COMPARISON:",
         f"  Manual Triangles: {len(result.manual.triangles)}",
@@ -406,17 +406,19 @@ def _extract_binary_points(data: bytes, elevation_hints: Sequence[float]) -> Tup
                 if point is not None:
                     current_run.append((offset, point))
                 else:
-                    if len(current_run) >= 5:
+                    if len(current_run) >= 4:
                         run_info = _build_run_info(current_run, remainder, order)
                         if run_info is not None:
                             candidate_runs.append(run_info)
                     current_run = []
-            if len(current_run) >= 5:
+            if len(current_run) >= 4:
                 run_info = _build_run_info(current_run, remainder, order)
                 if run_info is not None:
                     candidate_runs.append(run_info)
 
     candidate_runs.sort(key=lambda item: item["score"], reverse=True)
+    if not elevation_hints and candidate_runs:
+        candidate_runs = candidate_runs[:1]
     selected_runs = []
     merged_points: List[Point3D] = []
     seen_points = set()
@@ -488,6 +490,8 @@ def _build_run_info(
     if unique_xy < 4:
         return None
     if x_range <= 0.0 or y_range <= 0.0:
+        return None
+    if z_range > x_range or z_range > y_range:
         return None
 
     score = float(len(points) * 10 + unique_xy * 2 - z_range)
