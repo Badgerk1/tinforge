@@ -11,14 +11,14 @@ from ..core.tin_model import Point3D
 from .point_parser import PointParser
 
 SURVEY_ANNOTATION_PATTERNS = (
-    re.compile(r"\belev\b"),
-    re.compile(r"\bgrade\b"),
-    re.compile(r"\bspot\b"),
-    re.compile(r"\bbm\b"),
-    re.compile(r"\blp\s*="),
-    re.compile(r"\bt/?g\s*="),
-    re.compile(r"\bex\b"),
-    re.compile(r"\)\s*ex\b"),
+    re.compile(r"\belev\b", re.IGNORECASE),
+    re.compile(r"\bgrade\b", re.IGNORECASE),
+    re.compile(r"\bspot\b", re.IGNORECASE),
+    re.compile(r"\bbm\b", re.IGNORECASE),
+    re.compile(r"\blp\s*=", re.IGNORECASE),
+    re.compile(r"\bt/?g\s*=", re.IGNORECASE),
+    re.compile(r"\bex\b", re.IGNORECASE),
+    re.compile(r"\)\s*ex\b", re.IGNORECASE),
 )
 
 
@@ -302,9 +302,8 @@ class PDFParser(PointParser):
                 prefix = token[:match.start()].strip()
                 suffix = token[match.end():].strip()
                 parenthesized = prefix.endswith("(") or suffix.startswith(")") or suffix.endswith(")")
-                token_lower = token.lower()
                 survey_annotated = any(
-                    pattern.search(token_lower)
+                    pattern.search(token)
                     for pattern in SURVEY_ANNOTATION_PATTERNS
                 )
                 if confidence < 40 and not (parenthesized or keyword_context or survey_annotated):
