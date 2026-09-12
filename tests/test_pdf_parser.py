@@ -142,6 +142,8 @@ def test_parse_normalizes_duplicate_ocr_points():
             return False
 
     parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: "/usr/bin/tesseract")
     parser._extract_from_ocr = lambda page, page_idx: [
         parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 0),
         parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 1),
@@ -149,6 +151,7 @@ def test_parse_normalizes_duplicate_ocr_points():
     ]
 
     points = parser.parse("unused.pdf")
+    monkeypatch.undo()
 
     assert len(points) == 2
     assert [point.id for point in points] == [1, 2]
@@ -179,3 +182,85 @@ def test_extract_from_ocr_requires_tsv_output(monkeypatch):
 
     with pytest.raises(RuntimeError, match="did not produce TSV"):
         parser._extract_from_ocr(FakePage(), 0)
+
+
+def test_parse_uses_companion_tp3_for_vector_heavy_pdf(monkeypatch, tmp_path):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    pdf_path = tmp_path / "survey.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4")
+    tp3_path = tmp_path / "manual.tp3"
+    tp3_path.write_bytes(b"Topcon TP3")
+
+    class FakePage:
+        images = []
+        lines = [{}] * 800
+        curves = [{}] * 400
+        rects = [{}] * 20
+        annots = []
+
+        def extract_tables(self):
+            return []
+
+        def extract_text(self):
+            return None
+
+    class FakePDF:
+        pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    fake_points = [
+        parser._parse_coordinate_row(["1.0", "2.0", "170.0"], 0),
+        parser._parse_coordinate_row(["3.0", "4.0", "171.0"], 1),
+    ]
+
+    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: None)
+    monkeypatch.setattr("src.parsers.pdf_parser.PDFParser._extract_from_companion_tp3", lambda self, path: fake_points)
+
+    points = parser.parse(str(pdf_path))
+
+    assert points == fake_points
+    assert parser.last_parse_details["source"] == "companion_tp3"
+    assert parser.last_parse_details["companion_tp3_path"] == str(tp3_path)
+
+
+def test_parse_skips_ocr_for_raster_reference_sheet_when_companion_tp3_exists(monkeypatch, tmp_path):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    pdf_path = tmp_path / "reference.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4")
+    (tmp_path / "manual.tp3").write_bytes(b"Topcon TP3")
+
+    class FakePage:
+        images = [{}]
+        lines = []
+        curves = []
+        rects = []
+        annots = []
+
+        def extract_tables(self):
+            return []
+
+        def extract_text(self):
+            return None
+
+    class FakePDF:
+        pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: None)
+
+    points = parser.parse(str(pdf_path))
+
+    assert points == []
+    assert parser.last_parse_details["source"] == "empty_reference_sheet"

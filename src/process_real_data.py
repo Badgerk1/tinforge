@@ -70,6 +70,7 @@ def extract_real_survey_data(pdf_paths: List[Path] | None = None) -> List[Dict[s
                 "file_path": pdf_path,
                 "file_size": pdf_path.stat().st_size,
                 "points": points,
+                "parse_details": dict(parser.last_parse_details),
                 "summary": summarize_points(points),
             }
         )
@@ -92,6 +93,7 @@ def main() -> int:
         print(f"File: {item['file_path'].name}")
         print(f"  Path: {item['file_path']}")
         print(f"  Size: {format_bytes(item['file_size'])}")
+        print(f"  Extraction source: {item['parse_details'].get('source', 'unknown')}")
         print(f"  Points extracted: {summary['point_count']}")
         if bounds:
             print(

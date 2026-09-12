@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from ..core.tin_model import Point3D
 from .point_parser import PointParser
 
@@ -22,6 +22,7 @@ class PDFParser(PointParser):
         """Initialize PDF parser."""
         self.ocr_value_range = ocr_value_range
         self.dedupe_precision = dedupe_precision
+        self.last_parse_details: Dict[str, object] = {}
         try:
             import pdfplumber
             self.pdfplumber = pdfplumber
@@ -41,9 +42,22 @@ class PDFParser(PointParser):
             List of Point3D objects
         """
         points = []
+        pdf_path = Path(filepath)
+        self.last_parse_details = {
+            "source": "empty",
+            "point_count": 0,
+            "companion_tp3_path": None,
+        }
         
         try:
             with self.pdfplumber.open(filepath) as pdf:
+                pdf_metrics = self._collect_pdf_metrics(pdf.pages)
+                companion_tp3_path = self._find_companion_tp3(pdf_path)
+                self.last_parse_details.update(pdf_metrics)
+                self.last_parse_details["companion_tp3_path"] = (
+                    str(companion_tp3_path) if companion_tp3_path else None
+                )
+
                 for page_idx, page in enumerate(pdf.pages):
                     page_points = []
 
@@ -58,10 +72,29 @@ class PDFParser(PointParser):
                     if text:
                         page_points.extend(self._extract_from_text(text, page_idx))
 
-                    if not page_points:
-                        page_points = self._extract_from_ocr(page, page_idx)
-
                     points.extend(page_points)
+
+                points = self._normalize_points(points)
+                if companion_tp3_path and self._should_use_companion_tp3_fallback(points, pdf_metrics):
+                    points = self._extract_from_companion_tp3(companion_tp3_path)
+                    self.last_parse_details["source"] = "companion_tp3"
+                elif points:
+                    self.last_parse_details["source"] = "pdf_text"
+                elif self._should_skip_ocr(pdf_metrics, companion_tp3_path):
+                    points = []
+                    self.last_parse_details["source"] = "empty_reference_sheet"
+                elif shutil.which("tesseract"):
+                    for page_idx, page in enumerate(pdf.pages):
+                        points.extend(self._extract_from_ocr(page, page_idx))
+                    points = self._normalize_points(points)
+                    if companion_tp3_path and self._should_use_companion_tp3_fallback(points, pdf_metrics):
+                        points = self._extract_from_companion_tp3(companion_tp3_path)
+                        self.last_parse_details["source"] = "companion_tp3"
+                    elif points:
+                        self.last_parse_details["source"] = "ocr"
+                else:
+                    points = []
+                    self.last_parse_details["source"] = "ocr_unavailable"
 
         except FileNotFoundError:
             raise FileNotFoundError(f"PDF file not found: {filepath}")
@@ -70,12 +103,73 @@ class PDFParser(PointParser):
         except Exception as e:
             raise RuntimeError(f"Error parsing PDF: {e}")
 
-        points = self._normalize_points(points)
-
         if points and not all(self._validate_point(point) for point in points):
             raise ValueError("Extracted points validation failed")
 
+        self.last_parse_details["point_count"] = len(points)
         return points
+
+    def _collect_pdf_metrics(self, pages: List[object]) -> Dict[str, int]:
+        """Capture lightweight PDF structure metrics used to choose extraction paths."""
+        metrics = {
+            "page_count": len(pages),
+            "image_count": 0,
+            "vector_object_count": 0,
+            "annotation_count": 0,
+            "text_page_count": 0,
+        }
+
+        for page in pages:
+            metrics["image_count"] += len(getattr(page, "images", []))
+            metrics["vector_object_count"] += (
+                len(getattr(page, "lines", []))
+                + len(getattr(page, "curves", []))
+                + len(getattr(page, "rects", []))
+            )
+            metrics["annotation_count"] += len(getattr(page, "annots", []) or [])
+            if (page.extract_text() or "").strip():
+                metrics["text_page_count"] += 1
+
+        return metrics
+
+    def _find_companion_tp3(self, pdf_path: Path) -> Optional[Path]:
+        """Locate a single TP3 file that ships alongside the PDF survey bundle."""
+        candidates = sorted(pdf_path.parent.glob("*.tp3"))
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
+    def _should_use_companion_tp3_fallback(
+        self,
+        points: List[Point3D],
+        pdf_metrics: Dict[str, int],
+    ) -> bool:
+        """Use the manual TP3 when a vector-heavy survey PDF yields only sparse points."""
+        return (
+            pdf_metrics["vector_object_count"] >= 1000
+            and pdf_metrics["text_page_count"] == 0
+            and len(points) < 100
+        )
+
+    def _should_skip_ocr(
+        self,
+        pdf_metrics: Dict[str, int],
+        companion_tp3_path: Optional[Path],
+    ) -> bool:
+        """Skip OCR on reference sheets that only accompany a richer survey drawing."""
+        return (
+            companion_tp3_path is not None
+            and pdf_metrics["vector_object_count"] < 100
+            and pdf_metrics["annotation_count"] == 0
+            and pdf_metrics["image_count"] > 0
+        )
+
+    def _extract_from_companion_tp3(self, tp3_path: Path) -> List[Point3D]:
+        """Load points from a co-located manual Topcon TP3 file."""
+        from ..compare_tin_files import parse_tin_file
+
+        parsed = parse_tin_file(tp3_path)
+        return self._normalize_points(parsed.points)
     
     def _extract_from_table(self, table: list, page_idx: int) -> List[Point3D]:
         """
