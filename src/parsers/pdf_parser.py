@@ -53,7 +53,7 @@ class PDFParser(PointParser):
         try:
             with self.pdfplumber.open(filepath) as pdf:
                 pdf_metrics = self._collect_pdf_metrics(pdf.pages)
-                companion_tp3_path = self._find_companion_tp3(pdf_path)
+                companion_tp3_path = self._find_companion_tp3(pdf_path, pdf.pages)
                 self.last_parse_details.update(pdf_metrics)
                 self.last_parse_details["companion_tp3_path"] = (
                     str(companion_tp3_path) if companion_tp3_path else None
@@ -133,15 +133,41 @@ class PDFParser(PointParser):
 
         return metrics
 
-    def _find_companion_tp3(self, pdf_path: Path) -> Optional[Path]:
-        """Locate a single TP3 file that ships alongside the PDF survey bundle."""
+    def _find_companion_tp3(self, pdf_path: Path, pages: List[object]) -> Optional[Path]:
+        """Locate the most plausible TP3 companion that ships alongside the PDF survey bundle."""
         candidates = sorted(
             path for path in pdf_path.parent.iterdir()
             if path.is_file() and path.suffix.lower() == ".tp3"
         )
+        if not candidates:
+            return None
         if len(candidates) == 1:
             return candidates[0]
+
+        context_tokens = set(self._tokenize_name(pdf_path.stem))
+        for page in pages:
+            context_tokens.update(self._tokenize_name(page.extract_text() or ""))
+            for annot in getattr(page, "annots", []) or []:
+                context_tokens.update(self._tokenize_name(annot.get("contents") or ""))
+
+        scored_candidates = []
+        for candidate in candidates:
+            candidate_tokens = set(self._tokenize_name(candidate.stem))
+            score = len(candidate_tokens & context_tokens)
+            scored_candidates.append((score, candidate))
+
+        scored_candidates.sort(key=lambda item: (item[0], item[1].name.lower()), reverse=True)
+        if len(scored_candidates) == 1 or scored_candidates[0][0] > scored_candidates[1][0]:
+            return scored_candidates[0][1]
         return None
+
+    def _tokenize_name(self, value: str) -> List[str]:
+        """Split a file name or annotation into comparable lowercase tokens."""
+        return [
+            token
+            for token in re.findall(r"[A-Za-z0-9]+", value.lower())
+            if len(token) >= 3
+        ]
 
     def _should_use_companion_tp3_fallback(
         self,

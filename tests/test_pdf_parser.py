@@ -122,7 +122,7 @@ def test_summarize_points_handles_empty_collections():
     assert summary["sample_points"] == []
 
 
-def test_parse_normalizes_duplicate_ocr_points():
+def test_parse_normalizes_duplicate_ocr_points(monkeypatch):
     parser = PDFParser(ocr_value_range=(100.0, 400.0))
 
     class FakePage:
@@ -142,16 +142,14 @@ def test_parse_normalizes_duplicate_ocr_points():
             return False
 
     parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: "/usr/bin/tesseract")
     parser._extract_from_ocr = lambda page, page_idx: [
         parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 0),
         parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 1),
         parser._parse_coordinate_row(["30.0", "40.0", "171.0"], 2),
     ]
-
     points = parser.parse("unused.pdf")
-    monkeypatch.undo()
+    points = parser.parse("unused.pdf")
 
     assert len(points) == 2
     assert [point.id for point in points] == [1, 2]
@@ -264,3 +262,23 @@ def test_parse_skips_ocr_for_raster_reference_sheet_when_companion_tp3_exists(mo
 
     assert points == []
     assert parser.last_parse_details["source"] == "empty_reference_sheet"
+
+
+def test_find_companion_tp3_prefers_annotation_token_match(tmp_path):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    pdf_path = tmp_path / "63287_002-TB1-ElevationsOn.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4")
+    wanted_tp3 = tmp_path / "Purolator NP 2026.TP3"
+    wanted_tp3.write_bytes(b"Topcon TP3")
+    other_tp3 = tmp_path / "Other Project.tp3"
+    other_tp3.write_bytes(b"Topcon TP3")
+
+    class FakePage:
+        annots = [{"contents": "PUROLATOR WAREHOUSE"}]
+
+        def extract_text(self):
+            return None
+
+    companion = parser._find_companion_tp3(pdf_path, [FakePage()])
+
+    assert companion == wanted_tp3
