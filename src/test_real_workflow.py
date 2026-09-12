@@ -178,7 +178,9 @@ def run_real_workflow(output_dir: Path | None = None, input_paths: List[Path] | 
     validation = {
         "minimum_points_met": tin_stats["point_count"] >= 10,
         "triangles_created": tin_stats["triangle_count"] >= 1,
-        "all_exports_successful": all(path.exists() and path.stat().st_size > 0 for path in output_files.values()),
+        "all_exports_successful": len(output_files) == 6 and all(
+            path.exists() and path.stat().st_size > 0 for path in output_files.values()
+        ),
         "report_created": False,
         "output_naming_ok": all(path.parent == destination and path.name.startswith("final_survey_") for path in output_files.values()),
     }
