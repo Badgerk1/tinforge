@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from ..core.tin_model import Point3D
 from .point_parser import PointParser
+from .tp3_parser import extract_binary_topcon_tp3_points
 
 
 class PDFParser(PointParser):
@@ -134,7 +135,10 @@ class PDFParser(PointParser):
 
     def _find_companion_tp3(self, pdf_path: Path) -> Optional[Path]:
         """Locate a single TP3 file that ships alongside the PDF survey bundle."""
-        candidates = sorted(pdf_path.parent.glob("*.tp3"))
+        candidates = sorted(
+            path for path in pdf_path.parent.iterdir()
+            if path.is_file() and path.suffix.lower() == ".tp3"
+        )
         if len(candidates) == 1:
             return candidates[0]
         return None
@@ -166,10 +170,7 @@ class PDFParser(PointParser):
 
     def _extract_from_companion_tp3(self, tp3_path: Path) -> List[Point3D]:
         """Load points from a co-located manual Topcon TP3 file."""
-        from ..compare_tin_files import parse_tin_file
-
-        parsed = parse_tin_file(tp3_path)
-        return self._normalize_points(parsed.points)
+        return self._normalize_points(extract_binary_topcon_tp3_points(tp3_path))
     
     def _extract_from_table(self, table: list, page_idx: int) -> List[Point3D]:
         """
