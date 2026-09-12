@@ -52,8 +52,8 @@ class PDFParser(PointParser):
                     if text:
                         page_points.extend(self._extract_from_text(text, page_idx))
 
-                    if len(page_points) < 3:
-                        page_points.extend(self._extract_from_ocr(page, page_idx))
+                    if not page_points:
+                        page_points = self._extract_from_ocr(page, page_idx)
 
                     points.extend(page_points)
 

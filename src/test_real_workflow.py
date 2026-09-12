@@ -82,7 +82,10 @@ def _build_report(extracted: List[Dict[str, object]], tin_stats: Dict[str, objec
     )
 
     for label, output_path in output_files.items():
-        lines.append(f"- {label}: {output_path.name} ({format_bytes(output_path.stat().st_size)})")
+        if output_path.exists():
+            lines.append(f"- {label}: {output_path.name} ({format_bytes(output_path.stat().st_size)})")
+        else:
+            lines.append(f"- {label}: {output_path.name} (missing)")
 
     return "\n".join(lines) + "\n"
 
