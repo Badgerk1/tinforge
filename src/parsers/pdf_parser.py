@@ -15,7 +15,7 @@ SURVEY_ANNOTATION_PATTERNS = (
     re.compile(r"\bgrade\b", re.IGNORECASE),
     re.compile(r"\bspot\b", re.IGNORECASE),
     re.compile(r"\bbm\b", re.IGNORECASE),
-    re.compile(r"\blp(?:\s*=|\s+|(?=\d))", re.IGNORECASE),
+    re.compile(r"\blp(?:\s*=|\s+(?=[+-]?\d+\.\d+)|(?=[+-]?\d+\.\d+))", re.IGNORECASE),
     re.compile(r"\bt/?g\s*=", re.IGNORECASE),
     re.compile(r"\bex\b", re.IGNORECASE),
     re.compile(r"\)\s*ex\b", re.IGNORECASE),
