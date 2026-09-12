@@ -149,7 +149,6 @@ def test_parse_normalizes_duplicate_ocr_points(monkeypatch):
         parser._parse_coordinate_row(["30.0", "40.0", "171.0"], 2),
     ]
     points = parser.parse("unused.pdf")
-    points = parser.parse("unused.pdf")
 
     assert len(points) == 2
     assert [point.id for point in points] == [1, 2]
@@ -186,7 +185,7 @@ def test_parse_uses_companion_tp3_for_vector_heavy_pdf(monkeypatch, tmp_path):
     parser = PDFParser(ocr_value_range=(100.0, 400.0))
     pdf_path = tmp_path / "survey.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
-    tp3_path = tmp_path / "manual.tp3"
+    tp3_path = tmp_path / "survey.tp3"
     tp3_path.write_bytes(b"Topcon TP3")
 
     class FakePage:

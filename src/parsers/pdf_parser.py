@@ -53,6 +53,7 @@ class PDFParser(PointParser):
         try:
             with self.pdfplumber.open(filepath) as pdf:
                 pdf_metrics, page_texts = self._collect_pdf_metrics(pdf.pages)
+                has_tp3_sibling = self._directory_has_tp3(pdf_path)
                 companion_tp3_path = self._find_companion_tp3(pdf_path, pdf.pages, page_texts)
                 self.last_parse_details.update(pdf_metrics)
                 self.last_parse_details["companion_tp3_path"] = (
@@ -92,7 +93,7 @@ class PDFParser(PointParser):
                         found_table_points,
                         found_text_points,
                     )
-                elif self._should_skip_ocr(pdf_metrics, companion_tp3_path):
+                elif self._should_skip_ocr(pdf_metrics, has_tp3_sibling):
                     points = []
                     self.last_parse_details["source"] = "empty_reference_sheet"
                 elif shutil.which("tesseract"):
@@ -144,6 +145,13 @@ class PDFParser(PointParser):
 
         return metrics, page_texts
 
+    def _directory_has_tp3(self, pdf_path: Path) -> bool:
+        """Return whether the PDF sits beside at least one TP3 file."""
+        return any(
+            path.is_file() and path.suffix.lower() == ".tp3"
+            for path in pdf_path.parent.iterdir()
+        )
+
     def _find_companion_tp3(
         self,
         pdf_path: Path,
@@ -157,8 +165,6 @@ class PDFParser(PointParser):
         )
         if not candidates:
             return None
-        if len(candidates) == 1:
-            return candidates[0]
 
         context_tokens = set(self._tokenize_name(pdf_path.stem))
         for page_idx, page in enumerate(pages):
@@ -211,14 +217,15 @@ class PDFParser(PointParser):
     def _should_skip_ocr(
         self,
         pdf_metrics: Dict[str, int],
-        companion_tp3_path: Optional[Path],
+        has_tp3_sibling: bool,
     ) -> bool:
         """Skip OCR on reference sheets that only accompany a richer survey drawing."""
         return (
-            companion_tp3_path is not None
+            has_tp3_sibling
             and pdf_metrics["vector_object_count"] < 100
             and pdf_metrics["annotation_count"] == 0
             and pdf_metrics["image_count"] > 0
+            and pdf_metrics["text_page_count"] == 0
         )
 
     def _extract_from_companion_tp3(self, tp3_path: Path) -> List[Point3D]:
