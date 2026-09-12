@@ -45,20 +45,21 @@ def _build_report(extracted: List[Dict[str, object]], tin_stats: Dict[str, objec
     for item in extracted:
         summary = item["summary"]
         bounds = summary["bounds"]
-        lines.extend(
-            [
-                f"- {item['file_path'].name}",
-                f"  path: {item['file_path']}",
-                f"  size: {format_bytes(item['file_size'])}",
-                f"  extracted points: {summary['point_count']}",
-                (
-                    "  bounds: "
-                    f"X[{bounds['x_min']:.2f}, {bounds['x_max']:.2f}] "
-                    f"Y[{bounds['y_min']:.2f}, {bounds['y_max']:.2f}] "
-                    f"Z[{bounds['z_min']:.3f}, {bounds['z_max']:.3f}]"
-                ),
-            ]
-        )
+        lines.extend([
+            f"- {item['file_path'].name}",
+            f"  path: {item['file_path']}",
+            f"  size: {format_bytes(item['file_size'])}",
+            f"  extracted points: {summary['point_count']}",
+        ])
+        if bounds:
+            lines.append(
+                "  bounds: "
+                f"X[{bounds['x_min']:.2f}, {bounds['x_max']:.2f}] "
+                f"Y[{bounds['y_min']:.2f}, {bounds['y_max']:.2f}] "
+                f"Z[{bounds['z_min']:.3f}, {bounds['z_max']:.3f}]"
+            )
+        else:
+            lines.append("  bounds: none")
 
     lines.extend(
         [
@@ -93,6 +94,9 @@ def run_real_workflow(output_dir: Path | None = None) -> Dict[str, object]:
 
     for item in extracted:
         combined_points.extend(item["points"])
+
+    if len(combined_points) < 3:
+        raise ValueError("At least 3 extracted points are required to build the real survey TIN workflow")
 
     combined_points = _renumber_points(combined_points)
     triangulator = DelaunayTriangulator(combined_points)

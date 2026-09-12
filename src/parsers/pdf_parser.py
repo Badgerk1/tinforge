@@ -39,21 +39,23 @@ class PDFParser(PointParser):
         try:
             with self.pdfplumber.open(filepath) as pdf:
                 for page_idx, page in enumerate(pdf.pages):
+                    page_points = []
+
                     # Try to extract table data
                     tables = page.extract_tables()
                     if tables:
                         for table in tables:
-                            page_points = self._extract_from_table(table, page_idx)
-                            points.extend(page_points)
-                    
+                            page_points.extend(self._extract_from_table(table, page_idx))
+
                     # Also try to extract text and find coordinates
                     text = page.extract_text()
                     if text:
-                        text_points = self._extract_from_text(text, page_idx)
-                        points.extend(text_points)
+                        page_points.extend(self._extract_from_text(text, page_idx))
 
-                    if len(points) < 3:
-                        points.extend(self._extract_from_ocr(page, page_idx))
+                    if len(page_points) < 3:
+                        page_points.extend(self._extract_from_ocr(page, page_idx))
+
+                    points.extend(page_points)
 
         except FileNotFoundError:
             raise FileNotFoundError(f"PDF file not found: {filepath}")
@@ -62,7 +64,7 @@ class PDFParser(PointParser):
 
         points = self._normalize_points(points)
 
-        if not self.validate_points(points):
+        if points and not all(self._validate_point(point) for point in points):
             raise ValueError("Extracted points validation failed")
 
         return points
@@ -169,61 +171,7 @@ class PDFParser(PointParser):
 
             rows = self._read_ocr_tsv(tsv_path)
 
-        line_rows = defaultdict(list)
-        for row in rows:
-            text = (row.get("text") or "").strip()
-            if not text:
-                continue
-            line_key = (
-                row.get("block_num", ""),
-                row.get("par_num", ""),
-                row.get("line_num", ""),
-            )
-            line_rows[line_key].append(row)
-
-        scale = resolution / 72.0
-        points = []
-
-        for line in line_rows.values():
-            tokens = [(row.get("text") or "").strip() for row in line if (row.get("text") or "").strip()]
-            normalized_line = " ".join(tokens).lower()
-            short_context = len(tokens) <= 8
-            keyword_context = short_context and any(keyword in normalized_line for keyword in ("elev", "grade", "spot", "bm"))
-
-            for row in line:
-                token = (row.get("text") or "").strip().replace(",", "")
-                match = re.search(r'([+-]?\d+\.\d+)', token)
-                if not match:
-                    continue
-
-                try:
-                    value = float(match.group(1))
-                    confidence = float(row.get("conf", "-1"))
-                    left = int(row.get("left", "0"))
-                    top = int(row.get("top", "0"))
-                    width = int(row.get("width", "0"))
-                    height = int(row.get("height", "0"))
-                except ValueError:
-                    continue
-
-                parenthesized = token.startswith("(") or token.endswith(")")
-                if confidence < 40 or not 100.0 <= value <= 400.0:
-                    continue
-                if len(tokens) > 4 and not parenthesized and not keyword_context:
-                    continue
-
-                center_x = (left + (width / 2.0)) / scale
-                center_y = (top + (height / 2.0)) / scale
-
-                points.append(
-                    Point3D(
-                        x=center_x,
-                        y=max(page.height - center_y, 0.0),
-                        z=value,
-                    )
-                )
-
-        return points
+        return self._extract_elevation_points_from_ocr_rows(rows, page.height, resolution)
     
     def _parse_coordinate_row(self, values: list, row_idx: int) -> Optional[Point3D]:
         """
@@ -277,6 +225,69 @@ class PDFParser(PointParser):
             )
 
         return normalized_points
+
+    def _extract_elevation_points_from_ocr_rows(
+        self,
+        rows: List[dict],
+        page_height: float,
+        resolution: int,
+    ) -> List[Point3D]:
+        """Convert OCR TSV rows into page-space elevation points."""
+        line_rows = defaultdict(list)
+        for row in rows:
+            text = (row.get("text") or "").strip()
+            if not text:
+                continue
+            line_key = (
+                row.get("block_num", ""),
+                row.get("par_num", ""),
+                row.get("line_num", ""),
+            )
+            line_rows[line_key].append(row)
+
+        scale = resolution / 72.0
+        points = []
+
+        for line in line_rows.values():
+            tokens = [(row.get("text") or "").strip() for row in line if (row.get("text") or "").strip()]
+            normalized_line = " ".join(tokens).lower()
+            short_context = len(tokens) <= 8
+            keyword_context = short_context and any(keyword in normalized_line for keyword in ("elev", "grade", "spot", "bm"))
+
+            for row in line:
+                token = (row.get("text") or "").strip().replace(",", "")
+                match = re.search(r'([+-]?\d+\.\d+)', token)
+                if not match:
+                    continue
+
+                try:
+                    value = float(match.group(1))
+                    confidence = float(row.get("conf", "-1"))
+                    left = int(row.get("left", "0"))
+                    top = int(row.get("top", "0"))
+                    width = int(row.get("width", "0"))
+                    height = int(row.get("height", "0"))
+                except ValueError:
+                    continue
+
+                parenthesized = token.startswith("(") or token.endswith(")")
+                if confidence < 40 or not 100.0 <= value <= 400.0:
+                    continue
+                if len(tokens) > 4 and not parenthesized and not keyword_context:
+                    continue
+
+                center_x = (left + (width / 2.0)) / scale
+                center_y = (top + (height / 2.0)) / scale
+
+                points.append(
+                    Point3D(
+                        x=center_x,
+                        y=max(page_height - center_y, 0.0),
+                        z=value,
+                    )
+                )
+
+        return points
 
     def _read_ocr_tsv(self, tsv_path: Path) -> List[dict]:
         """Read Tesseract TSV output defensively."""

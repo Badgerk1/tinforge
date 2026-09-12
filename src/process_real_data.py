@@ -32,6 +32,13 @@ def format_bytes(size: int) -> str:
 
 def summarize_points(points: List[Point3D]) -> Dict[str, object]:
     """Summarize a point collection."""
+    if not points:
+        return {
+            "point_count": 0,
+            "bounds": None,
+            "sample_points": [],
+        }
+
     x_values = [point.x for point in points]
     y_values = [point.y for point in points]
     z_values = [point.z for point in points]
@@ -85,12 +92,15 @@ def main() -> int:
         print(f"  Path: {item['file_path']}")
         print(f"  Size: {format_bytes(item['file_size'])}")
         print(f"  Points extracted: {summary['point_count']}")
-        print(
-            "  Bounds: "
-            f"X[{bounds['x_min']:.2f}, {bounds['x_max']:.2f}] "
-            f"Y[{bounds['y_min']:.2f}, {bounds['y_max']:.2f}] "
-            f"Z[{bounds['z_min']:.2f}, {bounds['z_max']:.3f}]"
-        )
+        if bounds:
+            print(
+                "  Bounds: "
+                f"X[{bounds['x_min']:.2f}, {bounds['x_max']:.2f}] "
+                f"Y[{bounds['y_min']:.2f}, {bounds['y_max']:.2f}] "
+                f"Z[{bounds['z_min']:.2f}, {bounds['z_max']:.3f}]"
+            )
+        else:
+            print("  Bounds: none")
         print("  Sample points:")
         for point in summary["sample_points"]:
             print(f"    - {point}")
