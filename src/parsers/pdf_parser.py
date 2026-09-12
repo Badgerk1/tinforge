@@ -65,6 +65,8 @@ class PDFParser(PointParser):
 
         except FileNotFoundError:
             raise FileNotFoundError(f"PDF file not found: {filepath}")
+        except (RuntimeError, ValueError):
+            raise
         except Exception as e:
             raise RuntimeError(f"Error parsing PDF: {e}")
 
