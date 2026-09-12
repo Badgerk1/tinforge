@@ -14,11 +14,12 @@ from .point_parser import PointParser
 class PDFParser(PointParser):
     """Extract survey points from PDF documents."""
     
-    def __init__(self):
+    def __init__(self, ocr_value_range: Optional[tuple[float, float]] = None):
         """Initialize PDF parser."""
         try:
             import pdfplumber
             self.pdfplumber = pdfplumber
+            self.ocr_value_range = ocr_value_range
         except ImportError:
             raise ImportError("pdfplumber required for PDF parsing. Install with: pip install pdfplumber")
     
@@ -271,8 +272,12 @@ class PDFParser(PointParser):
                     continue
 
                 parenthesized = token.startswith("(") or token.endswith(")")
-                if confidence < 40 or not 100.0 <= value <= 400.0:
+                if confidence < 40:
                     continue
+                if self.ocr_value_range is not None:
+                    min_value, max_value = self.ocr_value_range
+                    if not min_value <= value <= max_value:
+                        continue
                 if len(tokens) > 4 and not parenthesized and not keyword_context:
                     continue
 

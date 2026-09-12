@@ -13,10 +13,11 @@ from src.parsers.pdf_parser import PDFParser
 
 
 REAL_SURVEY_DIR = REPOSITORY_ROOT / "real_survey_data"
-REAL_SURVEY_FILES = (
-    REAL_SURVEY_DIR / "63287_001-C1.1 -R1.pdf",
-    REAL_SURVEY_DIR / "63287_002-TB1-ElevationsOn-24x30-Horiz-Topo.pdf",
-)
+
+
+def get_real_survey_files() -> List[Path]:
+    """Discover uploaded real survey PDF files."""
+    return sorted(REAL_SURVEY_DIR.glob("*.pdf"))
 
 
 def format_bytes(size: int) -> str:
@@ -58,8 +59,8 @@ def summarize_points(points: List[Point3D]) -> Dict[str, object]:
 
 def extract_real_survey_data(pdf_paths: List[Path] | None = None) -> List[Dict[str, object]]:
     """Extract points from the uploaded real survey PDFs."""
-    parser = PDFParser()
-    survey_files = [Path(path) for path in (pdf_paths or REAL_SURVEY_FILES)]
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    survey_files = [Path(path) for path in (pdf_paths or get_real_survey_files())]
     extracted = []
 
     for pdf_path in survey_files:

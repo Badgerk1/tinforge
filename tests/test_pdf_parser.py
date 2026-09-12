@@ -13,7 +13,7 @@ from src.process_real_data import summarize_points
 
 
 def test_extract_elevation_points_from_ocr_rows_filters_noise():
-    parser = PDFParser()
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
     rows = [
         {
             "block_num": "1",
@@ -118,3 +118,36 @@ def test_summarize_points_handles_empty_collections():
     assert summary["point_count"] == 0
     assert summary["bounds"] is None
     assert summary["sample_points"] == []
+
+
+def test_parse_normalizes_duplicate_ocr_points():
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+
+    class FakePage:
+        def extract_tables(self):
+            return []
+
+        def extract_text(self):
+            return None
+
+    class FakePDF:
+        pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
+    parser._extract_from_ocr = lambda page, page_idx: [
+        parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 0),
+        parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 1),
+        parser._parse_coordinate_row(["30.0", "40.0", "171.0"], 2),
+    ]
+
+    points = parser.parse("unused.pdf")
+
+    assert len(points) == 2
+    assert [point.id for point in points] == [1, 2]
+    assert [(point.x, point.y, point.z) for point in points] == [(10.0, 20.0, 170.0), (30.0, 40.0, 171.0)]
