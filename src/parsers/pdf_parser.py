@@ -14,9 +14,14 @@ from .point_parser import PointParser
 class PDFParser(PointParser):
     """Extract survey points from PDF documents."""
     
-    def __init__(self, ocr_value_range: Optional[tuple[float, float]] = None):
+    def __init__(
+        self,
+        ocr_value_range: Optional[tuple[float, float]] = None,
+        dedupe_precision: int = 3,
+    ):
         """Initialize PDF parser."""
         self.ocr_value_range = ocr_value_range
+        self.dedupe_precision = dedupe_precision
         try:
             import pdfplumber
             self.pdfplumber = pdfplumber
@@ -166,8 +171,11 @@ class PDFParser(PointParser):
                     stderr=subprocess.PIPE,
                     text=True,
                 )
-            except (OSError, subprocess.CalledProcessError):
-                raise RuntimeError(f"OCR fallback failed for PDF page {page_idx + 1}")
+            except subprocess.CalledProcessError as exc:
+                error_details = exc.stderr.strip() if exc.stderr else str(exc)
+                raise RuntimeError(f"OCR fallback failed for PDF page {page_idx + 1}: {error_details}") from exc
+            except OSError as exc:
+                raise RuntimeError(f"OCR fallback failed for PDF page {page_idx + 1}: {exc}") from exc
 
             tsv_path = output_base.with_suffix(".tsv")
             if not tsv_path.exists():
@@ -213,7 +221,11 @@ class PDFParser(PointParser):
         seen = set()
 
         for point in points:
-            key = (round(point.x, 3), round(point.y, 3), round(point.z, 3))
+            key = (
+                round(point.x, self.dedupe_precision),
+                round(point.y, self.dedupe_precision),
+                round(point.z, self.dedupe_precision),
+            )
             if key in seen:
                 continue
             seen.add(key)
@@ -274,7 +286,9 @@ class PDFParser(PointParser):
                 except ValueError:
                     continue
 
-                parenthesized = token.startswith("(") or token.endswith(")")
+                prefix = token[:match.start()].strip()
+                suffix = token[match.end():].strip()
+                parenthesized = prefix.endswith("(") or suffix.startswith(")") or suffix.endswith(")")
                 if confidence < 40:
                     continue
                 if self.ocr_value_range is not None:

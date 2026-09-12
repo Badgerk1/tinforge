@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
@@ -151,3 +153,29 @@ def test_parse_normalizes_duplicate_ocr_points():
     assert len(points) == 2
     assert [point.id for point in points] == [1, 2]
     assert [(point.x, point.y, point.z) for point in points] == [(10.0, 20.0, 170.0), (30.0, 40.0, 171.0)]
+
+
+def test_extract_from_ocr_requires_tesseract(monkeypatch):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="tesseract"):
+        parser._extract_from_ocr(object(), 0)
+
+
+def test_extract_from_ocr_requires_tsv_output(monkeypatch):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+
+    class FakeImage:
+        def save(self, path):
+            Path(path).write_bytes(b"png")
+
+    class FakePage:
+        def to_image(self, resolution):
+            return type("FakePageImage", (), {"original": FakeImage()})()
+
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: "/usr/bin/tesseract")
+    monkeypatch.setattr("src.parsers.pdf_parser.subprocess.run", lambda *args, **kwargs: None)
+
+    with pytest.raises(RuntimeError, match="did not produce TSV"):
+        parser._extract_from_ocr(FakePage(), 0)
