@@ -16,10 +16,10 @@ class PDFParser(PointParser):
     
     def __init__(self, ocr_value_range: Optional[tuple[float, float]] = None):
         """Initialize PDF parser."""
+        self.ocr_value_range = ocr_value_range
         try:
             import pdfplumber
             self.pdfplumber = pdfplumber
-            self.ocr_value_range = ocr_value_range
         except ImportError:
             raise ImportError("pdfplumber required for PDF parsing. Install with: pip install pdfplumber")
     
@@ -146,14 +146,17 @@ class PDFParser(PointParser):
             List of Point3D objects using page-space X/Y with OCR-derived Z
         """
         if not shutil.which("tesseract"):
-            return []
+            raise RuntimeError("OCR fallback requires the 'tesseract' binary to be installed")
 
         with tempfile.TemporaryDirectory(prefix="tinforge-ocr-") as tmp_dir:
             tmp_path = Path(tmp_dir)
             image_path = tmp_path / f"page_{page_idx + 1}.png"
             output_base = tmp_path / f"page_{page_idx + 1}"
 
-            page.to_image(resolution=resolution).original.save(image_path)
+            try:
+                page.to_image(resolution=resolution).original.save(image_path)
+            except Exception as exc:
+                raise RuntimeError(f"OCR fallback could not render PDF page {page_idx + 1}: {exc}") from exc
 
             try:
                 subprocess.run(
@@ -164,11 +167,11 @@ class PDFParser(PointParser):
                     text=True,
                 )
             except (OSError, subprocess.CalledProcessError):
-                return []
+                raise RuntimeError(f"OCR fallback failed for PDF page {page_idx + 1}")
 
             tsv_path = output_base.with_suffix(".tsv")
             if not tsv_path.exists():
-                return []
+                raise RuntimeError(f"OCR fallback did not produce TSV output for PDF page {page_idx + 1}")
 
             rows = self._read_ocr_tsv(tsv_path)
 

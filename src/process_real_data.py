@@ -60,7 +60,7 @@ def summarize_points(points: List[Point3D]) -> Dict[str, object]:
 def extract_real_survey_data(pdf_paths: List[Path] | None = None) -> List[Dict[str, object]]:
     """Extract points from the uploaded real survey PDFs."""
     parser = PDFParser(ocr_value_range=(100.0, 400.0))
-    survey_files = [Path(path) for path in (pdf_paths or get_real_survey_files())]
+    survey_files = [Path(path) for path in (get_real_survey_files() if pdf_paths is None else pdf_paths)]
     extracted = []
 
     for pdf_path in survey_files:
@@ -98,7 +98,7 @@ def main() -> int:
                 "  Bounds: "
                 f"X[{bounds['x_min']:.2f}, {bounds['x_max']:.2f}] "
                 f"Y[{bounds['y_min']:.2f}, {bounds['y_max']:.2f}] "
-                f"Z[{bounds['z_min']:.2f}, {bounds['z_max']:.3f}]"
+                f"Z[{bounds['z_min']:.3f}, {bounds['z_max']:.3f}]"
             )
         else:
             print("  Bounds: none")
