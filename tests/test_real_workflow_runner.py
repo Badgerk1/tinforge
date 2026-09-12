@@ -17,6 +17,9 @@ def test_run_real_workflow_creates_expected_outputs(tmp_path):
     assert len(results["combined_points"]) >= 3
     assert results["tin_statistics"]["triangle_count"] >= 1
     assert results["report_path"].exists()
+    assert results["report_path"].name == "FINAL_TEST_REPORT.txt"
+    assert results["validation"]["all_exports_successful"] is True
     for output_path in results["output_files"].values():
         assert output_path.exists()
         assert output_path.stat().st_size > 0
+        assert output_path.name.startswith("final_survey_")

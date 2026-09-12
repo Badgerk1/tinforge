@@ -43,9 +43,16 @@ def main() -> int:
     print()
     print(f"Combined points: {len(results['combined_points'])}")
     print(f"Triangles created: {results['tin_statistics']['triangle_count']}")
+    print(
+        "Coordinate bounds: "
+        f"X[{results['tin_statistics']['bounds']['x_min']:.2f}, {results['tin_statistics']['bounds']['x_max']:.2f}] "
+        f"Y[{results['tin_statistics']['bounds']['y_min']:.2f}, {results['tin_statistics']['bounds']['y_max']:.2f}] "
+        f"Z[{results['tin_statistics']['bounds']['z_min']:.3f}, {results['tin_statistics']['bounds']['z_max']:.3f}]"
+    )
     print(f"Input size total: {format_bytes(total_input_size)}")
     print(f"Output size total: {format_bytes(total_output_size)}")
     print(f"Report: {results['report_path']}")
+    print(f"Validation summary: {results['validation']}")
 
     if missing:
         print()
@@ -59,6 +66,8 @@ def main() -> int:
         return 1
 
     print()
+    print("Full test report:")
+    print(results["report_text"])
     print("Validation successful.")
     return 0
 
