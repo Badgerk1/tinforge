@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 import re
 import struct
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from src.core.tin_model import Point3D, Triangle
 from src.core.triangulation import DelaunayTriangulator
@@ -91,7 +91,7 @@ class ComparisonResult:
     differences: List[str]
 
 
-def parse_tin_file(path: Path | str) -> ParsedTIN:
+def parse_tin_file(path: Union[Path, str]) -> ParsedTIN:
     """Parse a supported TIN file."""
     file_path = Path(path)
     data = file_path.read_bytes()
@@ -109,8 +109,8 @@ def parse_tin_file(path: Path | str) -> ParsedTIN:
 
 
 def compare_tin_files(
-    manual_path: Path | str,
-    generated_path: Path | str,
+    manual_path: Union[Path, str],
+    generated_path: Union[Path, str],
     coordinate_tolerance: float = 0.01,
     bounds_tolerance_percent: float = 1.0,
     area_tolerance_percent: float = 1.0,
