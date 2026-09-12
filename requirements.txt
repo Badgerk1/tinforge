@@ -1,0 +1,33 @@
+# Core Dependencies
+numpy>=1.21.0
+scipy>=1.7.0
+Pillow>=8.0.0
+
+# Web Framework
+Flask>=2.0.0
+flask-cors>=3.0.10
+
+# Data Processing
+pandas>=1.3.0
+openpyxl>=3.0.0
+
+# PDF Processing
+pdfplumber>=0.6.0
+PyPDF2>=1.26.0
+reportlab>=3.6.0
+
+# Geospatial (Optional but recommended)
+Shapely>=1.7.0
+PyProj>=3.0.0
+
+# Visualization
+matplotlib>=3.4.0
+
+# Utilities
+python-dotenv>=0.19.0
+click>=8.0.0
+colorama>=0.4.4
+
+# Testing
+pytest>=6.2.0
+pytest-cov>=2.12.0
