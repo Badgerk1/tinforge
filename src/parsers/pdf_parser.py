@@ -53,7 +53,6 @@ class PDFParser(PointParser):
         try:
             with self.pdfplumber.open(filepath) as pdf:
                 pdf_metrics, page_texts = self._collect_pdf_metrics(pdf.pages)
-                has_tp3_sibling = self._directory_has_tp3(pdf_path)
                 companion_tp3_path = self._find_companion_tp3(pdf_path, pdf.pages, page_texts)
                 self.last_parse_details.update(pdf_metrics)
                 self.last_parse_details["companion_tp3_path"] = (
@@ -93,7 +92,7 @@ class PDFParser(PointParser):
                         found_table_points,
                         found_text_points,
                     )
-                elif self._should_skip_ocr(pdf_metrics, has_tp3_sibling):
+                elif self._should_skip_ocr(pdf_metrics, companion_tp3_path):
                     points = []
                     self.last_parse_details["source"] = "empty_reference_sheet"
                 elif shutil.which("tesseract"):
@@ -145,13 +144,6 @@ class PDFParser(PointParser):
 
         return metrics, page_texts
 
-    def _directory_has_tp3(self, pdf_path: Path) -> bool:
-        """Return whether the PDF sits beside at least one TP3 file."""
-        return any(
-            path.is_file() and path.suffix.lower() == ".tp3"
-            for path in pdf_path.parent.iterdir()
-        )
-
     def _find_companion_tp3(
         self,
         pdf_path: Path,
@@ -167,23 +159,12 @@ class PDFParser(PointParser):
             return None
 
         context_tokens = set(self._tokenize_name(pdf_path.stem))
-        for page_idx, page in enumerate(pages):
-            if page_texts is not None and page_idx < len(page_texts):
-                context_tokens.update(self._tokenize_name(page_texts[page_idx]))
-            for annot in getattr(page, "annots", []) or []:
-                context_tokens.update(self._tokenize_name(annot.get("contents") or ""))
-
-        scored_candidates = []
-        for candidate in candidates:
-            candidate_tokens = set(self._tokenize_name(candidate.stem))
-            score = len(candidate_tokens & context_tokens)
-            scored_candidates.append((score, candidate))
-
-        scored_candidates.sort(key=lambda item: (item[0], item[1].name.lower()), reverse=True)
-        if scored_candidates[0][0] <= 0:
-            return None
-        if len(scored_candidates) == 1 or scored_candidates[0][0] > scored_candidates[1][0]:
-            return scored_candidates[0][1]
+        context_tokens.update(self._collect_context_tokens_from_pages(pages, page_texts))
+        matched_candidate = self._select_candidate_tp3(candidates, context_tokens)
+        if matched_candidate is not None:
+            return matched_candidate
+        if len(candidates) == 1:
+            return self._match_single_tp3_from_sibling_bundle(pdf_path, candidates[0], context_tokens)
         return None
 
     def _tokenize_name(self, value: str) -> List[str]:
@@ -193,6 +174,61 @@ class PDFParser(PointParser):
             for token in re.findall(r"[A-Za-z0-9]+", value.lower())
             if len(token) >= 3
         ]
+
+    def _collect_context_tokens_from_pages(
+        self,
+        pages: List[object],
+        page_texts: Optional[List[str]] = None,
+    ) -> List[str]:
+        """Collect comparable tokens from page text and annotation contents."""
+        tokens: List[str] = []
+        for page_idx, page in enumerate(pages):
+            if page_texts is not None and page_idx < len(page_texts):
+                tokens.extend(self._tokenize_name(page_texts[page_idx]))
+            for annot in getattr(page, "annots", []) or []:
+                tokens.extend(self._tokenize_name(annot.get("contents") or ""))
+        return tokens
+
+    def _select_candidate_tp3(self, candidates: List[Path], context_tokens: set[str]) -> Optional[Path]:
+        """Select a TP3 only when it has a unique positive token overlap with the PDF context."""
+        scored_candidates = []
+        for candidate in candidates:
+            candidate_tokens = set(self._tokenize_name(candidate.stem))
+            score = len(candidate_tokens & context_tokens)
+            scored_candidates.append((score, candidate))
+
+        scored_candidates.sort(key=lambda item: item[0], reverse=True)
+        if scored_candidates[0][0] <= 0:
+            return None
+        if len(scored_candidates) == 1 or scored_candidates[0][0] > scored_candidates[1][0]:
+            return scored_candidates[0][1]
+        return None
+
+    def _match_single_tp3_from_sibling_bundle(
+        self,
+        pdf_path: Path,
+        candidate: Path,
+        current_context_tokens: set[str],
+    ) -> Optional[Path]:
+        """Allow a raster reference sheet to inherit a single TP3 match from a sibling survey PDF."""
+        current_name_tokens = set(self._tokenize_name(pdf_path.stem))
+        for sibling_pdf in sorted(pdf_path.parent.glob("*.pdf")):
+            if sibling_pdf == pdf_path:
+                continue
+            sibling_name_tokens = set(self._tokenize_name(sibling_pdf.stem))
+            if not (current_name_tokens & sibling_name_tokens):
+                continue
+            try:
+                with self.pdfplumber.open(sibling_pdf) as sibling:
+                    _, sibling_page_texts = self._collect_pdf_metrics(sibling.pages)
+                    sibling_tokens = sibling_name_tokens | set(
+                        self._collect_context_tokens_from_pages(sibling.pages, sibling_page_texts)
+                    )
+            except Exception:
+                continue
+            if self._select_candidate_tp3([candidate], sibling_tokens) == candidate:
+                return candidate
+        return None
 
     def _resolve_pdf_text_source(self, found_table_points: bool, found_text_points: bool) -> str:
         """Describe which native PDF extraction paths produced survey points."""
@@ -217,11 +253,11 @@ class PDFParser(PointParser):
     def _should_skip_ocr(
         self,
         pdf_metrics: Dict[str, int],
-        has_tp3_sibling: bool,
+        companion_tp3_path: Optional[Path],
     ) -> bool:
         """Skip OCR on reference sheets that only accompany a richer survey drawing."""
         return (
-            has_tp3_sibling
+            companion_tp3_path is not None
             and pdf_metrics["vector_object_count"] < 100
             and pdf_metrics["annotation_count"] == 0
             and pdf_metrics["image_count"] > 0

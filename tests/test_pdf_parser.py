@@ -230,7 +230,7 @@ def test_parse_skips_ocr_for_raster_reference_sheet_when_companion_tp3_exists(mo
     parser = PDFParser(ocr_value_range=(100.0, 400.0))
     pdf_path = tmp_path / "reference.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
-    (tmp_path / "manual.tp3").write_bytes(b"Topcon TP3")
+    (tmp_path / "reference.tp3").write_bytes(b"Topcon TP3")
 
     class FakePage:
         images = [{}]
@@ -279,5 +279,59 @@ def test_find_companion_tp3_prefers_annotation_token_match(tmp_path):
             return None
 
     companion = parser._find_companion_tp3(pdf_path, [FakePage()])
+
+    assert companion == wanted_tp3
+
+
+def test_find_companion_tp3_can_inherit_single_match_from_sibling_pdf(tmp_path):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    current_pdf = tmp_path / "63287_001-C1.1-R1.pdf"
+    current_pdf.write_bytes(b"%PDF-1.4")
+    sibling_pdf = tmp_path / "63287_002-TB1-ElevationsOn.pdf"
+    sibling_pdf.write_bytes(b"%PDF-1.4")
+    wanted_tp3 = tmp_path / "Purolator NP 2026.tp3"
+    wanted_tp3.write_bytes(b"Topcon TP3")
+
+    class ReferencePage:
+        annots = []
+        images = [{}]
+        lines = []
+        curves = []
+        rects = []
+
+        def extract_text(self):
+            return None
+
+    class SiblingPage:
+        annots = [{"contents": "PUROLATOR WAREHOUSE"}]
+        images = []
+        lines = [{}] * 1000
+        curves = []
+        rects = []
+
+        def extract_text(self):
+            return None
+
+    class FakePDF:
+        def __init__(self, pages):
+            self.pages = pages
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    parser.pdfplumber = type(
+        "FakePdfPlumber",
+        (),
+        {
+            "open": staticmethod(
+                lambda path: FakePDF([SiblingPage()]) if Path(path) == sibling_pdf else FakePDF([ReferencePage()])
+            )
+        },
+    )
+
+    companion = parser._find_companion_tp3(current_pdf, [ReferencePage()], [""])
 
     assert companion == wanted_tp3
