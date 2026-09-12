@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from src.core.tin_model import Point3D, Triangle
-from src.parsers.tp3_parser import extract_binary_topcon_tp3_data
+from src.parsers.topcon_binary_parser import extract_binary_topcon_tp3_data
 
 try:
     from scipy.spatial import cKDTree

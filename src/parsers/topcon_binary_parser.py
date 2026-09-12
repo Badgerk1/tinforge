@@ -1,4 +1,4 @@
-"""Shared Topcon TP3 parsing helpers."""
+"""Topcon TP3 binary parsing helpers used by comparison tooling."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def extract_binary_topcon_tp3_data(
     path: Path,
     data: bytes,
 ) -> Tuple[str, List[Point3D], List[Tuple[int, int, int]], Dict[str, object], List[str]]:
-    """Extract a project name, points, triangles, metadata, and warnings from a binary TP3."""
+    """Extract project name, points, triangles, metadata, and warnings from a binary TP3."""
     utf16_strings = _extract_utf16_strings(data)
     project_name = _extract_project_name(utf16_strings) or path.stem
     elevation_hints = _extract_numeric_hints(utf16_strings)
@@ -41,12 +41,6 @@ def extract_binary_topcon_tp3_data(
         metadata["triangle_source"] = "unavailable"
 
     return project_name, points, triangles, metadata, warnings
-
-
-def extract_binary_topcon_tp3_points(path: Path) -> List[Point3D]:
-    """Extract only the point list from a binary TP3 file."""
-    _, points, _, _, _ = extract_binary_topcon_tp3_data(path, path.read_bytes())
-    return points
 
 
 def _extract_utf16_strings(data: bytes) -> List[str]:

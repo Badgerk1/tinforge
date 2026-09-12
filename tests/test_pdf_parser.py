@@ -181,19 +181,21 @@ def test_extract_from_ocr_requires_tsv_output(monkeypatch):
         parser._extract_from_ocr(FakePage(), 0)
 
 
-def test_parse_uses_companion_tp3_for_vector_heavy_pdf(monkeypatch, tmp_path):
+def test_parse_uses_annotation_points_before_ocr(monkeypatch, tmp_path):
     parser = PDFParser(ocr_value_range=(100.0, 400.0))
     pdf_path = tmp_path / "survey.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
-    tp3_path = tmp_path / "survey.tp3"
-    tp3_path.write_bytes(b"Topcon TP3")
 
     class FakePage:
         images = []
         lines = [{}] * 800
         curves = [{}] * 400
         rects = [{}] * 20
-        annots = []
+        annots = [
+            {"contents": "(170.25)", "x0": 10, "x1": 20, "y0": 30, "y1": 40},
+            {"contents": "ELEV 170.40", "x0": 30, "x1": 40, "y0": 50, "y1": 60},
+            {"contents": "NOT A POINT", "x0": 0, "x1": 0, "y0": 0, "y1": 0},
+        ]
 
         def extract_tables(self):
             return []
@@ -210,128 +212,66 @@ def test_parse_uses_companion_tp3_for_vector_heavy_pdf(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    fake_points = [
-        parser._parse_coordinate_row(["1.0", "2.0", "170.0"], 0),
-        parser._parse_coordinate_row(["3.0", "4.0", "171.0"], 1),
+    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: None)
+
+    points = parser.parse(str(pdf_path))
+
+    assert len(points) == 2
+    assert [round(point.z, 2) for point in points] == [170.25, 170.40]
+    assert parser.last_parse_details["source"] == "pdf_annotations"
+
+
+def test_parse_uses_ocr_when_pdf_extraction_finds_no_points(monkeypatch, tmp_path):
+    parser = PDFParser(ocr_value_range=(100.0, 400.0))
+    pdf_path = tmp_path / "survey.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4")
+
+    class FakePage:
+        images = [{}]
+        lines = []
+        curves = []
+        rects = []
+        annots = [{"contents": "not numeric"}]
+
+        def extract_tables(self):
+            return []
+
+        def extract_text(self):
+            return None
+
+    class FakePDF:
+        pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
+    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: "/usr/bin/tesseract")
+    parser._extract_from_ocr = lambda page, page_idx: [
+        parser._parse_coordinate_row(["10.0", "20.0", "170.0"], 0),
+        parser._parse_coordinate_row(["30.0", "40.0", "171.0"], 1),
     ]
 
-    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
-    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: None)
-    monkeypatch.setattr("src.parsers.pdf_parser.PDFParser._extract_from_companion_tp3", lambda self, path: fake_points)
-
     points = parser.parse(str(pdf_path))
 
-    assert points == fake_points
-    assert parser.last_parse_details["source"] == "companion_tp3"
-    assert parser.last_parse_details["companion_tp3_path"] == str(tp3_path)
+    assert len(points) == 2
+    assert parser.last_parse_details["source"] == "ocr"
 
 
-def test_parse_skips_ocr_for_raster_reference_sheet_when_companion_tp3_exists(monkeypatch, tmp_path):
+def test_extract_from_annotations_ignores_non_spot_values():
     parser = PDFParser(ocr_value_range=(100.0, 400.0))
-    pdf_path = tmp_path / "reference.pdf"
-    pdf_path.write_bytes(b"%PDF-1.4")
-    (tmp_path / "reference.tp3").write_bytes(b"Topcon TP3")
-
     class FakePage:
-        images = [{}]
-        lines = []
-        curves = []
-        rects = []
-        annots = []
+        annots = [
+            {"contents": "ELEV 170.30", "x0": 10, "x1": 20, "y0": 30, "y1": 40},
+            {"contents": "P.I.N. 07367-0090 (LT)", "x0": 50, "x1": 60, "y0": 70, "y1": 80},
+            {"contents": "100 200 300", "x0": 90, "x1": 100, "y0": 110, "y1": 120},
+        ]
 
-        def extract_tables(self):
-            return []
+    points = parser._extract_from_annotations(FakePage())
 
-        def extract_text(self):
-            return None
-
-    class FakePDF:
-        pages = [FakePage()]
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    parser.pdfplumber = type("FakePdfPlumber", (), {"open": staticmethod(lambda _: FakePDF())})
-    monkeypatch.setattr("src.parsers.pdf_parser.shutil.which", lambda _: None)
-
-    points = parser.parse(str(pdf_path))
-
-    assert points == []
-    assert parser.last_parse_details["source"] == "empty_reference_sheet"
-
-
-def test_find_companion_tp3_prefers_annotation_token_match(tmp_path):
-    parser = PDFParser(ocr_value_range=(100.0, 400.0))
-    pdf_path = tmp_path / "63287_002-TB1-ElevationsOn.pdf"
-    pdf_path.write_bytes(b"%PDF-1.4")
-    wanted_tp3 = tmp_path / "Purolator NP 2026.TP3"
-    wanted_tp3.write_bytes(b"Topcon TP3")
-    other_tp3 = tmp_path / "Other Project.tp3"
-    other_tp3.write_bytes(b"Topcon TP3")
-
-    class FakePage:
-        annots = [{"contents": "PUROLATOR WAREHOUSE"}]
-
-        def extract_text(self):
-            return None
-
-    companion = parser._find_companion_tp3(pdf_path, [FakePage()])
-
-    assert companion == wanted_tp3
-
-
-def test_find_companion_tp3_can_inherit_single_match_from_sibling_pdf(tmp_path):
-    parser = PDFParser(ocr_value_range=(100.0, 400.0))
-    current_pdf = tmp_path / "63287_001-C1.1-R1.pdf"
-    current_pdf.write_bytes(b"%PDF-1.4")
-    sibling_pdf = tmp_path / "63287_002-TB1-ElevationsOn.pdf"
-    sibling_pdf.write_bytes(b"%PDF-1.4")
-    wanted_tp3 = tmp_path / "Purolator NP 2026.tp3"
-    wanted_tp3.write_bytes(b"Topcon TP3")
-
-    class ReferencePage:
-        annots = []
-        images = [{}]
-        lines = []
-        curves = []
-        rects = []
-
-        def extract_text(self):
-            return None
-
-    class SiblingPage:
-        annots = [{"contents": "PUROLATOR WAREHOUSE"}]
-        images = []
-        lines = [{}] * 1000
-        curves = []
-        rects = []
-
-        def extract_text(self):
-            return None
-
-    class FakePDF:
-        def __init__(self, pages):
-            self.pages = pages
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    parser.pdfplumber = type(
-        "FakePdfPlumber",
-        (),
-        {
-            "open": staticmethod(
-                lambda path: FakePDF([SiblingPage()]) if Path(path) == sibling_pdf else FakePDF([ReferencePage()])
-            )
-        },
-    )
-
-    companion = parser._find_companion_tp3(current_pdf, [ReferencePage()], [""])
-
-    assert companion == wanted_tp3
+    assert len(points) == 1
+    assert round(points[0].z, 2) == 170.30
